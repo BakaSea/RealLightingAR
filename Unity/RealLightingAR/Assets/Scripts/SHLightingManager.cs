@@ -6,6 +6,7 @@ public class SHLightingManager : MonoBehaviour {
 
     public Cubemap environmentMap;
     public float intensity = 1.0f;
+    bool envMapLight = false;
 
     void OnValidate() {
         Start();
@@ -16,11 +17,13 @@ public class SHLightingManager : MonoBehaviour {
         SphericalHarmonicsL2 sh;
         if (environmentMap != null) {
             LightProbes.GetInterpolatedProbe(transform.position, null, out sh);
+            envMapLight = true;
         } else {
             sh = new SphericalHarmonicsL2();
             sh.AddDirectionalLight(new Vector3(0, 1, 0), Color.red, 1.0f);
             sh.AddDirectionalLight(new Vector3(0, -1, 0), Color.green, 1.0f);
             sh.AddDirectionalLight(new Vector3(1, 0, 0), Color.blue, 1.0f);
+            envMapLight = false;
         }
         RenderSettings.ambientProbe = sh;
         RenderSettings.ambientMode = AmbientMode.Custom;
@@ -29,7 +32,27 @@ public class SHLightingManager : MonoBehaviour {
 
     // Update is called once per frame
     void Update() {
-        
+
+    }
+
+    public void OnClick() {
+        if (environmentMap != null) {
+            SphericalHarmonicsL2 sh;
+            // Bug!!!
+            if (envMapLight) {
+                sh = new SphericalHarmonicsL2();
+                sh.AddDirectionalLight(new Vector3(0, 1, 0), Color.red, 1.0f);
+                sh.AddDirectionalLight(new Vector3(0, -1, 0), Color.green, 1.0f);
+                sh.AddDirectionalLight(new Vector3(1, 0, 0), Color.blue, 1.0f);
+                envMapLight = false;
+            } else {
+                LightProbes.GetInterpolatedProbe(transform.position, null, out sh);
+                envMapLight = true;
+            }
+            RenderSettings.ambientProbe = sh;
+            RenderSettings.ambientMode = AmbientMode.Custom;
+            RenderSettings.ambientIntensity = intensity;
+        }
     }
 
 }
