@@ -1,3 +1,7 @@
+data/
+model/
+.idea/
+download_mp.py
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
