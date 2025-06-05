@@ -41,10 +41,10 @@ Material:
     m_Floats:
     - _QueueControl: 0
     - _QueueOffset: 0
-    - _shadow_cutoff: 0.993
-    - _shadow_strength: 0.7
+    - _shadow_cutoff: 0.95
+    - _shadow_strength: 0.6
     m_Colors:
-    - _shadow_color: {r: 1, g: 0, b: 0, a: 0}
+    - _shadow_color: {r: 0, g: 0, b: 0, a: 0}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
 --- !u!114 &2718269004825809707

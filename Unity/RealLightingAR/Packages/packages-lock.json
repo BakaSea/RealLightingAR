@@ -261,7 +261,7 @@
     },
     "com.unity.xr.arfoundation": {
       "version": "6.1.0",
-      "depth": 0,
+      "depth": 1,
       "source": "registry",
       "dependencies": {
         "com.unity.ugui": "2.0.0",

@@ -78,12 +78,12 @@ QualitySettings:
     antiAliasing: 0
     softParticles: 0
     softVegetation: 0
-    realtimeReflectionProbes: 0
+    realtimeReflectionProbes: 1
     billboardsFaceCameraPosition: 0
     useLegacyDetailDistribution: 1
     adaptiveVsync: 0
     vSyncCount: 1
-    realtimeGICPUUsage: 25
+    realtimeGICPUUsage: 100
     adaptiveVsyncExtraA: 0
     adaptiveVsyncExtraB: 0
     lodBias: 1
