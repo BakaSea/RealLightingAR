@@ -1,152 +1,153 @@
 using System.Collections;
-using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Rendering;
 using Unity.Sentis;
 using UnityEngine.XR.ARFoundation;
 using UnityEngine.XR.ARSubsystems;
 using Unity.Collections.LowLevel.Unsafe;
-
+using Unity.Collections;
 
 [ExecuteInEditMode]
 public class SHManager_ALT : MonoBehaviour
 {
+    [Header("AR Setup (assign in Inspector)")]
     public ARCameraManager cameraManager;
-    public ModelAsset     modelAsset;
 
-    // ─── scheduling + readback state ───────────────────
-    public int k_LayersPerFrame = 20;
-    private IEnumerator    m_Schedule;
-    bool           m_Scheduling   = false;
-    bool           inferencePending = false;
-    Tensor<float>  outputTensor;
-    float          deltaTime       = 0f;
+    [Header("ONNX Model (assign in Inspector)")]
+    public ModelAsset modelAsset;
 
-    // ─── preallocated resources ────────────────────────
-    Texture2D       cameraTexture;
+    [Header("Inference Settings")]
+    [Tooltip("Tensor resolution (W×H)")]
+    public int targetWidth   = 640;
+    public int targetHeight  = 512;
+    [Tooltip("How many model layers to schedule per frame")]
+    public int layersPerFrame = 5;
+
+    // ─────────────── internal ───────────────
+    Worker        worker;
+    Tensor<float> inputTensor;
+    Texture2D     cameraTexture;
     NativeArray<byte> rawTextureData;
-    Tensor<float>   inputTensor;
-    const int       targetW = 640, targetH = 512;
 
-    void Start()
+    IEnumerator   scheduleIter;
+    bool          scheduling;
+    bool          inferencePending;
+
+    void Awake()
     {
-        // 1) load + worker
-        var model  = ModelLoader.Load(modelAsset);
-        var worker = new Worker(model, BackendType.GPUCompute);
+        if (cameraManager == null || modelAsset == null)
+        {
+            Debug.LogError("Missing ARCameraManager or ModelAsset!", this);
+            enabled = false;
+            return;
+        }
 
-        // 2) pre-alloc cameraTexture + raw buffer
-        cameraTexture   = new Texture2D(targetW, targetH, TextureFormat.RGBA32, false);
-        rawTextureData  = cameraTexture.GetRawTextureData<byte>();
+        // 1) Load & create GPU worker
+        var model = ModelLoader.Load(modelAsset);
+        worker    = new Worker(model, BackendType.GPUCompute);
 
-        // 3) pre-alloc input tensor
-        inputTensor     = new Tensor<float>(new TensorShape(1, 3, targetH, targetW));
+        // 2) Pre-allocate the input Tensor: batch=1, RGB, H×W
+        inputTensor = new Tensor<float>(new TensorShape(1, 3, targetHeight, targetWidth));
 
-        // stash worker on the component
-        this.worker    = worker;
+        // 3) Pre-allocate a Texture2D + raw buffer for XRCpuImage
+        cameraTexture  = new Texture2D(targetWidth, targetHeight, TextureFormat.RGBA32, false);
+        rawTextureData = cameraTexture.GetRawTextureData<byte>();
     }
 
-    void OnDestroy()
+    void OnDisable()
     {
-        // only dispose if it was ever created
-        if (inputTensor != null)
+        // safe dispose
+        if (worker       != null) { worker.Dispose();       worker = null; }
+        if (inputTensor  != null) { inputTensor.Dispose();  inputTensor = null; }
+        if (rawTextureData.IsCreated) { rawTextureData.Dispose(); }
+        if (cameraTexture != null)
         {
-            inputTensor.Dispose();
-            inputTensor = null;
-        }
-
-        if (rawTextureData.IsCreated)
-        {
-            rawTextureData.Dispose();
-        }
-
-        if (worker != null)
-        {
-            worker.Dispose();
-            worker = null;
+            if (Application.isPlaying)
+                Destroy(cameraTexture);
+            else
+                DestroyImmediate(cameraTexture);
+            cameraTexture = null;
         }
     }
-
 
     void Update()
     {
-        deltaTime += Time.deltaTime;
+        if (!Application.isPlaying || worker == null)
+            return;
 
-        // ─── 1) if neither scheduling nor readback pending, kick off new inference ─────────
-        if (!m_Scheduling && !inferencePending)
+        // ─── 1) Kick off new inference if idle ───────────────────
+        if (!scheduling && !inferencePending)
         {
             if (!cameraManager.TryAcquireLatestCpuImage(out var cpuImage))
                 return;
 
-            // convert into our reusable Texture2D
-            var conv = new XRCpuImage.ConversionParams {
-                inputRect        = new RectInt(0,0, cpuImage.width, cpuImage.height),
-                outputDimensions = new Vector2Int(targetW, targetH),
+            // Convert CPU image into our pre-allocated Texture2D
+            var conv = new XRCpuImage.ConversionParams
+            {
+                inputRect        = new RectInt(0, 0, cpuImage.width, cpuImage.height),
+                outputDimensions = new Vector2Int(targetWidth, targetHeight),
                 outputFormat     = TextureFormat.RGBA32,
-                transformation   = XRCpuImage.Transformation.MirrorY
+                transformation   = XRCpuImage.Transformation.None
             };
 
-            unsafe {
+            unsafe
+            {
                 cpuImage.Convert(
                     conv,
                     new System.IntPtr(rawTextureData.GetUnsafePtr()),
                     rawTextureData.Length
                 );
             }
-
-
             cpuImage.Dispose();
             cameraTexture.Apply();
 
-            TextureConverter.ToTensor(cameraTexture,
-                                    inputTensor,   // <- existing field
-                                    default);
+            // CPU‐side helper: texture → tensor
+            TextureConverter.ToTensor(cameraTexture, inputTensor, default);
 
-            // start **iterable** schedule
-            m_Schedule     = worker.ScheduleIterable(inputTensor);
-            m_Scheduling   = true;
-            deltaTime      = 0f;
+            // Begin layer‐by‐layer scheduling
+            scheduleIter = worker.ScheduleIterable(inputTensor);
+            scheduling   = true;
+            return;
         }
 
-        // ─── 2) if we’re in the middle of scheduling, do k layers/frame ───────────────────────
-        if (m_Scheduling)
+        // ─── 2) Spread scheduling across frames ────────────────
+        if (scheduling)
         {
-            int it = 0;
+            int  i       = 0;
             bool hasMore = true;
-            while (hasMore && it++ < k_LayersPerFrame)
-                hasMore = m_Schedule.MoveNext();
+            while (hasMore && i++ < layersPerFrame)
+                hasMore = scheduleIter.MoveNext();
 
             if (!hasMore)
             {
-                // all layers scheduled → kick off async readback
-                m_Scheduling     = false;
+                scheduling       = false;
                 inferencePending = true;
 
-                outputTensor = worker.PeekOutput() as Tensor<float>;
-                outputTensor.ReadbackRequest();
+                // Fully‐async GPU→CPU readback
+                var outT    = worker.PeekOutput() as Tensor<float>;
+                var awaiter = outT.ReadbackAndCloneAsync().GetAwaiter();
+                awaiter.OnCompleted(() =>
+                {
+                    var cpuCopy = awaiter.GetResult();
+                    ApplySH(cpuCopy);
+                    cpuCopy.Dispose();
+                    inferencePending = false;
+                });
             }
-            return; // don’t do the readback check in the same frame
-        }
-
-        // ─── 3) poll for readback completion ──────────────────────────────────────────────────
-        if (inferencePending && outputTensor.IsReadbackRequestDone())
-        {
-            var results = outputTensor.DownloadToArray();
-            outputTensor.Dispose();
-
-            // apply your SH
-            var sh = new SphericalHarmonicsL2();
-            for (int c = 0; c < 3; ++c)
-                for (int i = 0; i < 9; ++i)
-                    sh[c, i] = results[i*3 + c];
-
-            RenderSettings.ambientMode      = AmbientMode.Custom;
-            RenderSettings.ambientProbe     = sh;
-            RenderSettings.ambientIntensity = 1.0f;
-
-            inferencePending = false;
+            return;
         }
     }
 
-    // stash the worker here
-    Worker worker;
+    void ApplySH(Tensor<float> cpuTensor)
+    {
+        // cpuTensor length == 27 (9 bands × 3 channels)
+        var sh = new SphericalHarmonicsL2();
+        for (int c = 0; c < 3; ++c)
+            for (int b = 0; b < 9; ++b)
+                sh[c, b] = cpuTensor[b * 3 + c];
+
+        RenderSettings.ambientMode      = AmbientMode.Custom;
+        RenderSettings.ambientProbe     = sh;
+        RenderSettings.ambientIntensity = 1f;
+    }
 }
