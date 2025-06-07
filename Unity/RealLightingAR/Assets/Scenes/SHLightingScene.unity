@@ -1162,7 +1162,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   cameraManager: {fileID: 1098808385}
-  modelAsset: {fileID: 5022602860645237092, guid: 346fc1939ada64c7280cbcaf283e0248,
+  modelAsset: {fileID: 5022602860645237092, guid: 2f491ee733ca94cd79c171621739e5d0,
     type: 3}
 --- !u!4 &1808502217
 Transform:
