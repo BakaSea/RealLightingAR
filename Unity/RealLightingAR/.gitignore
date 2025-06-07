@@ -63,6 +63,8 @@ sysinfo.txt
 *.unitypackage
 *.unitypackage.meta
 *.app
+*.onnx
+*.onnx.meta
 
 # Crashlytics generated file
 crashlytics-build.properties
