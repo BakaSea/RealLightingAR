@@ -87,7 +87,7 @@ public class SHManager_ALT : MonoBehaviour
                 inputRect        = new RectInt(0, 0, cpuImage.width, cpuImage.height),
                 outputDimensions = new Vector2Int(targetWidth, targetHeight),
                 outputFormat     = TextureFormat.RGBA32,
-                transformation   = XRCpuImage.Transformation.None
+                transformation   = XRCpuImage.Transformation.MirrorY
             };
 
             unsafe

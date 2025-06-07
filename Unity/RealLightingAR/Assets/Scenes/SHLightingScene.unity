@@ -1198,6 +1198,7 @@ MonoBehaviour:
   targetWidth: 640
   targetHeight: 512
   layersPerFrame: 5
+  cameraTexture: {fileID: 2800000, guid: a62e0b23bc5664b4c93b74105c9ab43e, type: 3}
 --- !u!1 &1923994443
 GameObject:
   m_ObjectHideFlags: 0
