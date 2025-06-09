@@ -9,7 +9,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 4701231875957476736}
-  - component: {fileID: 3339243241329171151}
   - component: {fileID: 182765275139166608}
   m_Layer: 0
   m_Name: SHController
@@ -33,21 +32,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &3339243241329171151
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3983299157359462436}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9c0b496374f0fd2479aafb5e1f9e73d9, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  cameraManager: {fileID: 0}
-  modelAsset: {fileID: 5022602860645237092, guid: 10b525aefc6b943f29be4c6e7e693754,
-    type: 3}
 --- !u!114 &182765275139166608
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -55,7 +39,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 3983299157359462436}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c2346dffcb23d4bd195c683be43ef4de, type: 3}
   m_Name: 
@@ -66,3 +50,6 @@ MonoBehaviour:
   targetWidth: 640
   targetHeight: 512
   layersPerFrame: 20
+  mainDirectionalLight: {fileID: 0}
+  mainLightIntensityMultiplier: 1
+  shWindowSize: 7

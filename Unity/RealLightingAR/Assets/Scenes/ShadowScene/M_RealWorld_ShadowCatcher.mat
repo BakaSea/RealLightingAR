@@ -42,7 +42,7 @@ Material:
     - _QueueControl: 0
     - _QueueOffset: 0
     - _shadow_cutoff: 0.95
-    - _shadow_strength: 0.9
+    - _shadow_strength: 1
     m_Colors:
     - _shadow_color: {r: 0, g: 0, b: 0, a: 0}
   m_BuildTextureStacks: []

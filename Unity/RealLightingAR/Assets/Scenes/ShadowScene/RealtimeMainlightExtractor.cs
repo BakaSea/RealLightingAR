@@ -27,6 +27,9 @@ public class RealtimeMainlightExtractor : MonoBehaviour
     {
         if (arCameraManager != null)
         {
+            arCameraManager.requestedLightEstimation =
+            LightEstimation.AmbientSphericalHarmonics;
+    
             arCameraManager.frameReceived += OnCameraFrameReceived;
         }
         else
@@ -45,80 +48,49 @@ public class RealtimeMainlightExtractor : MonoBehaviour
 
     void OnCameraFrameReceived(ARCameraFrameEventArgs eventArgs)
     {   
-        // if (Time.frameCount % 60 == 0) Debug.Log("ARLight: OnCameraFrameReceived called."); // Check if this event fires
-        // 1. Ambient Spherical Harmonics
-        if (eventArgs.lightEstimation.ambientSphericalHarmonics.HasValue)
+        if (!eventArgs.lightEstimation.ambientSphericalHarmonics.HasValue)
+            return;
+        // 1) grab the SH probe
+        var sh = eventArgs.lightEstimation.ambientSphericalHarmonics.Value;
+
+        // 2) extract a “dominant direction” from the first‐order bands (l=1)
+        //    we use a luminance weight so bright colors pull the direction
+        const float lumR = 0.2126f, lumG = 0.7152f, lumB = 0.0722f;
+        Vector3 v = new Vector3(
+        sh[0,3]*lumR + sh[1,3]*lumG + sh[2,3]*lumB,  // Y11 → x
+        sh[0,1]*lumR + sh[1,1]*lumG + sh[2,1]*lumB,  // Y1-1→ y
+        sh[0,2]*lumR + sh[1,2]*lumG + sh[2,2]*lumB   // Y10 → z
+        );
+
+        if (v.sqrMagnitude < 1e-6f)
+            return;
+
+        var dir = v.normalized;
+
+        // 3) sample that direction from the SH to get color
+        var dirs    = new Vector3[1] { dir };
+        var results = new Color[1];
+        sh.Evaluate(dirs, results);
+        Color mainColor = results[0];
+
+        // 4) use the max channel as intensity
+        float mainIntensity = mainColor.maxColorComponent * directionalLightIntensityMultiplier;
+
+        // 5) apply to your light
+        mainDirectionalLight.transform.rotation = Quaternion.LookRotation(dir);
+        mainDirectionalLight.color             = mainColor;
+        mainDirectionalLight.intensity         = mainIntensity;
+
+        // 6) also apply ambient probe
+        RenderSettings.ambientMode  = AmbientMode.Custom;
+        RenderSettings.ambientProbe = sh;
+        RenderSettings.ambientIntensity = 1f;
+
+         if (Time.frameCount % 60 == 0 && Time.frameCount > 1)
         {
-            // Apply the estimated SH to the scene's ambient probe for ambient lighting
-            RenderSettings.ambientProbe = eventArgs.lightEstimation.ambientSphericalHarmonics.Value;
-            // You might need to call DynamicGI.UpdateEnvironment(); if RenderSettings.ambientMode is not Skybox or if lighting doesn't update
-        }
-
-        // 2. Main Directional Light Estimation
-        if (mainDirectionalLight != null)
-        {
-            // Use main light direction if available
-            if (eventArgs.lightEstimation.mainLightDirection.HasValue)
-            {
-                mainDirectionalLight.transform.rotation = Quaternion.LookRotation(eventArgs.lightEstimation.mainLightDirection.Value);
-            }
-
-            // Use main light color if available (ARKit provides it in linear space)
-            if (eventArgs.lightEstimation.mainLightColor.HasValue)
-            {
-                // Ensure your project is in Linear color space for best results.
-                // If in Gamma, you might need color space conversion.
-                mainDirectionalLight.color = eventArgs.lightEstimation.mainLightColor.Value;
-            }
-            else if (eventArgs.lightEstimation.averageColorTemperature.HasValue)
-            {
-                // Fallback to color temperature if specific main light color isn't available
-                mainDirectionalLight.colorTemperature = eventArgs.lightEstimation.averageColorTemperature.Value;
-            }
-
-            //DEBUG INFO
-            if (Time.frameCount % 60 == 0 && Time.frameCount > 1)
-            {
-
-                
-                // ADD THIS LINE TO LOG THE ACTUAL OUTPUT DIRECTION:
-                Debug.Log("Directional Light ACTUAL Output Direction (transform.forward): " + mainDirectionalLight.transform.forward.ToString("F3"));
-                
-                // Optionally, log Euler angles again to confirm rotation
-                // Debug.Log("Directional Light Actual Rotation (eulerAngles): " + directionalLight.transform.eulerAngles.ToString("F3"));
-
-                Debug.Log("Calculated Dominant Light Color (from SH.Evaluate): " + mainDirectionalLight.color.ToString("F3"));
-
-                //eventArgs.lightEstimation.averageBrightness.HasValue
-                Debug.Log("Calculated Dominant Light Intensity (from SH.Evaluate): " + mainDirectionalLight.intensity.ToString("F3"));
-            }
-
-            // // Use main light intensity (lumens) or average intensity as a base
-            // if (eventArgs.lightEstimation.mainLightIntensityLumens.HasValue)
-            // {
-            //     // Convert lumens to Unity directional light intensity.
-            //     // This conversion can be tricky. ARKit lumens are per physical camera sensor area.
-            //     // Unity's directional light intensity is more abstract.
-            //     // A common approach is to use averageBrightness and then scale.
-            //     // For a simple start, you can try this, but it often needs calibration:
-            //     // mainDirectionalLight.intensity = eventArgs.lightEstimation.mainLightIntensityLumens.Value / 1000.0f * directionalLightIntensityMultiplier; // Needs tuning
-            //     // It's often more stable to use averageIntensityCelsius (see below)
-            // }
-
-            // // A more stable way for intensity is often using averageIntensityCelsius for overall brightness
-            // // and then applying a multiplier for the directional light.
-            if (eventArgs.lightEstimation.averageBrightness.HasValue)
-            {
-                // This value represents the estimated brightness of the scene (typically 0 to 2, can go higher).
-                // You'll need to scale this to a suitable range for your directional light's intensity.
-                mainDirectionalLight.intensity = eventArgs.lightEstimation.averageBrightness.Value * directionalLightIntensityMultiplier;
-            }
-
-            // // Set ambient intensity for the scene (affects how bright non-directly lit areas are)
-            // if (eventArgs.lightEstimation.averageIntensityCelsius.HasValue)
-            // {
-            //     RenderSettings.ambientIntensity = eventArgs.lightEstimation.averageIntensityCelsius.Value * intensityScalar;
-            // }
+            Debug.Log("dir: " + dir);
+            Debug.Log("mainColor: " + mainColor);
+            Debug.Log("mainIntensity: " + mainIntensity);
         }
     }
 
