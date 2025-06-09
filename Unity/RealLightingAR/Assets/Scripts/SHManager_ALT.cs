@@ -46,12 +46,7 @@ public class SHManager_ALT : MonoBehaviour
 
     void OnEnable()
     {
-        // 1) Reset the inference state machine
-        scheduling       = false;
-        inferencePending = false;
-        scheduleIter     = null;
-
-        // 2) (Re)initialize everything
+        // (Re)initialize everything
         if (cameraManager == null || modelAsset == null)
         {
             Debug.LogError("Missing ARCameraManager or ModelAsset!", this);
@@ -75,11 +70,20 @@ public class SHManager_ALT : MonoBehaviour
                 seed[c,b] = 0.5f;
         for (int i = 0; i < shWindowSize; i++)
             _shHistory.Enqueue(seed);
+        
+        // Reset the inference state machine
+        scheduling       = false;
+        inferencePending = false;
+        scheduleIter     = null;
     }
 
-    void OnDestroy()
+    void OnDisable()
     {
-        // Tear down in the same safe order as OnDisable
+        // tear down in reverse
+        scheduling       = false;
+        inferencePending = false;
+        scheduleIter     = null;
+
         if (worker != null)
         {
             worker.Dispose();
@@ -96,23 +100,9 @@ public class SHManager_ALT : MonoBehaviour
         }
         if (cameraTexture != null)
         {
-            Destroy(cameraTexture);
+            DestroyImmediate(cameraTexture);
             cameraTexture = null;
         }
-
-    }
-
-    void OnDisable()
-    {
-        // tear down in reverse
-        scheduling       = false;
-        inferencePending = false;
-        scheduleIter     = null;
-
-        if (worker       != null) { worker.Dispose();       worker = null; }
-        if (inputTensor  != null) { inputTensor.Dispose();  inputTensor = null; }
-        if (rawTextureData.IsCreated) rawTextureData.Dispose();
-        if (cameraTexture != null)   { DestroyImmediate(cameraTexture); cameraTexture = null; }
     }
 
     void Update()
@@ -173,11 +163,21 @@ public class SHManager_ALT : MonoBehaviour
                 var awaiter = outT.ReadbackAndCloneAsync().GetAwaiter();
                 awaiter.OnCompleted(() =>
                 {
-                    var cpuCopy = awaiter.GetResult();
-                    ApplySH(cpuCopy);
-                    cpuCopy.Dispose();
-
-                    inferencePending = false;
+                    Tensor<float> cpuCopy = null;
+                    try
+                    {
+                        cpuCopy = awaiter.GetResult();
+                        if (worker == null) return; // Component was disabled.
+                        ApplySH(cpuCopy);
+                    }
+                    finally
+                    {
+                        cpuCopy?.Dispose();
+                        if (worker != null)
+                        {
+                            inferencePending = false;
+                        }
+                    }
                 });
             }
             return;

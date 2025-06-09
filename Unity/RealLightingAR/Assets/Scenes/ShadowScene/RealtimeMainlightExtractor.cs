@@ -5,8 +5,25 @@ using UnityEngine.Rendering; // Required for SphericalHarmonicsL2
 public class RealtimeMainlightExtractor : MonoBehaviour
 {
 
-
     public ARCameraManager arCameraManager;
+    public ARCameraManager cameraManager
+        {
+            get => arCameraManager;
+            set
+            {
+                if (arCameraManager == value)
+                    return;
+
+                if (arCameraManager != null)
+                    arCameraManager.frameReceived -= FrameChanged;
+
+                arCameraManager = value;
+
+                if (arCameraManager != null & enabled)
+                    arCameraManager.frameReceived += FrameChanged;
+            }
+        }
+
     public Light mainDirectionalLight; // Assign your scene's main directional light
 
     // Optional: Factors to tweak intensity if needed
@@ -27,10 +44,7 @@ public class RealtimeMainlightExtractor : MonoBehaviour
     {
         if (arCameraManager != null)
         {
-            arCameraManager.requestedLightEstimation =
-            LightEstimation.AmbientSphericalHarmonics;
-    
-            arCameraManager.frameReceived += OnCameraFrameReceived;
+            arCameraManager.frameReceived += FrameChanged;
         }
         else
         {
@@ -42,30 +56,21 @@ public class RealtimeMainlightExtractor : MonoBehaviour
     {
         if (arCameraManager != null)
         {
-            arCameraManager.frameReceived -= OnCameraFrameReceived;
+            arCameraManager.frameReceived -= FrameChanged;
         }
     }
 
-    void OnCameraFrameReceived(ARCameraFrameEventArgs eventArgs)
+    void FrameChanged(ARCameraFrameEventArgs args)
     {   
-        if (!eventArgs.lightEstimation.ambientSphericalHarmonics.HasValue)
+        if (!args.lightEstimation.ambientSphericalHarmonics.HasValue ||
+            !args.lightEstimation.mainLightDirection.HasValue)
             return;
+
         // 1) grab the SH probe
-        var sh = eventArgs.lightEstimation.ambientSphericalHarmonics.Value;
-
-        // 2) extract a “dominant direction” from the first‐order bands (l=1)
-        //    we use a luminance weight so bright colors pull the direction
-        const float lumR = 0.2126f, lumG = 0.7152f, lumB = 0.0722f;
-        Vector3 v = new Vector3(
-        sh[0,3]*lumR + sh[1,3]*lumG + sh[2,3]*lumB,  // Y11 → x
-        sh[0,1]*lumR + sh[1,1]*lumG + sh[2,1]*lumB,  // Y1-1→ y
-        sh[0,2]*lumR + sh[1,2]*lumG + sh[2,2]*lumB   // Y10 → z
-        );
-
-        if (v.sqrMagnitude < 1e-6f)
-            return;
-
-        var dir = v.normalized;
+        var sh = args.lightEstimation.ambientSphericalHarmonics.Value;
+        
+        // 2) grab the main light direction from the platform
+        var dir = args.lightEstimation.mainLightDirection.Value;
 
         // 3) sample that direction from the SH to get color
         var dirs    = new Vector3[1] { dir };
@@ -77,16 +82,19 @@ public class RealtimeMainlightExtractor : MonoBehaviour
         float mainIntensity = mainColor.maxColorComponent * directionalLightIntensityMultiplier;
 
         // 5) apply to your light
-        mainDirectionalLight.transform.rotation = Quaternion.LookRotation(dir);
-        mainDirectionalLight.color             = mainColor;
-        mainDirectionalLight.intensity         = mainIntensity;
+        if(mainDirectionalLight != null)
+        {
+            mainDirectionalLight.transform.rotation = Quaternion.LookRotation(dir);
+            mainDirectionalLight.color             = mainColor;
+            mainDirectionalLight.intensity         = mainIntensity;
+        }
 
         // 6) also apply ambient probe
         RenderSettings.ambientMode  = AmbientMode.Custom;
         RenderSettings.ambientProbe = sh;
         RenderSettings.ambientIntensity = 1f;
 
-         if (Time.frameCount % 60 == 0 && Time.frameCount > 1)
+        if (Time.frameCount % 60 == 0 && Time.frameCount > 1)
         {
             Debug.Log("dir: " + dir);
             Debug.Log("mainColor: " + mainColor);
