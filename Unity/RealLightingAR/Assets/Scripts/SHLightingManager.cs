@@ -24,10 +24,7 @@ public class SHLightingManager : MonoBehaviour
 
     private void OnDestroy()
     {
-        if (worker != null)
-        {
-            worker.Dispose();
-        }
+        worker?.Dispose();
     }
 
     bool inferencePending = false;
@@ -66,27 +63,20 @@ public class SHLightingManager : MonoBehaviour
 
             cameraTexture.Apply();
 
-            Texture2D inputTexture = new Texture2D(cpuImage.width, cpuImage.height, conversionParams.outputFormat, false);
-            Color[] srgbPixels = cameraTexture.GetPixels();
-            Color[] linearPixels = new Color[srgbPixels.Length];
-
-            for (int i = 0; i < srgbPixels.Length; ++i)
-            {
-                linearPixels[i] = srgbPixels[i].linear;
-            }
-
-            inputTexture.SetPixels(linearPixels);
-            inputTexture.Apply();
-
-            using Tensor inputTensor = TextureConverter.ToTensor(inputTexture, width: 640, height: 512, channels: 3);
+            using Tensor inputTensor = TextureConverter.ToTensor(cameraTexture, width: 640, height: 512, channels: 3);
             worker.Schedule(inputTensor);
             outputTensor = worker.PeekOutput() as Tensor<float>;
             outputTensor.ReadbackRequest();
+
+            inputTensor.Dispose();
+            Destroy(cameraTexture);
+
             inferencePending = true;
             deltaTime = 0;
         } else if (inferencePending && outputTensor.IsReadbackRequestDone())
         {
             var results = outputTensor.DownloadToArray();
+            outputTensor.Dispose();
             //Debug.Log(string.Join(", ", results));
 
             SphericalHarmonicsL2 sh = new SphericalHarmonicsL2();
@@ -99,7 +89,7 @@ public class SHLightingManager : MonoBehaviour
                 }
             }
 
-            Debug.Log($"{deltaTime}");
+            //Debug.Log($"{deltaTime}");
 
             RenderSettings.ambientProbe = sh;
             RenderSettings.ambientMode = AmbientMode.Custom;
